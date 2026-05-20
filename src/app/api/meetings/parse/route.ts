@@ -5,6 +5,7 @@ import { extractTranscriptFromFile } from "@/lib/transcripts/extract";
 import { logUploadDev } from "@/lib/transcripts/upload-dev-log";
 import { validateUploadFile } from "@/lib/transcripts/validation";
 
+export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function POST(request: Request) {

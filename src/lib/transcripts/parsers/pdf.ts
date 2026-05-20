@@ -1,24 +1,24 @@
-import { PDFParse } from "pdf-parse";
+import "server-only";
+
+import pdf from "pdf-parse";
+
+const PDF_PARSE_ERROR = "Unable to parse PDF file";
 
 export async function extractPdfText(buffer: Buffer): Promise<string> {
-  const parser = new PDFParse({ data: buffer });
-
   try {
-    const result = await parser.getText();
-    const text = (result.text ?? "")
+    const parsed = await pdf(buffer);
+    const text = (parsed.text ?? "")
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter((line) => line.length > 0)
       .join("\n");
 
     if (!text.trim()) {
-      throw new Error(
-        "No readable text found in this PDF. Try a text-based export instead.",
-      );
+      throw new Error(PDF_PARSE_ERROR);
     }
 
     return text;
-  } finally {
-    await parser.destroy();
+  } catch {
+    throw new Error(PDF_PARSE_ERROR);
   }
 }
