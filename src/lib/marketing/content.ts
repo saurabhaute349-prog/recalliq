@@ -9,6 +9,8 @@ import {
   Zap,
 } from "lucide-react";
 
+import { formatProPrice } from "@/lib/payments/constants";
+
 export const MARKETING_STATS = [
   { label: "Transcripts processed", value: "12k+" },
   { label: "Questions answered", value: "48k+" },
@@ -154,7 +156,7 @@ export const PRICING_PLANS = [
   {
     id: "free",
     name: "Free",
-    price: "$0",
+    price: "₹0",
     period: "",
     description: "For individuals exploring AI meeting memory.",
     features: [
@@ -170,7 +172,7 @@ export const PRICING_PLANS = [
   {
     id: "pro",
     name: "Pro",
-    price: "$19",
+    price: formatProPrice({ withInterval: false }),
     period: "/month",
     description: "For teams who live in meetings and need recall on demand.",
     features: [

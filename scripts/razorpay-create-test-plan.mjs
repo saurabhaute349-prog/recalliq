@@ -1,9 +1,11 @@
 /**
- * Creates (or reuses) a Razorpay test plan for Recalliq Pro (₹19 INR/month).
+ * Creates (or reuses) a Razorpay test plan for Recalliq Pro (₹999 INR/month).
  * Reads credentials from .env.local and prints RAZORPAY_PLAN_ID to add to .env.local.
  */
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
+
+const PRO_AMOUNT_PAISE = 99900;
 
 function loadEnvLocal() {
   const envPath = resolve(process.cwd(), ".env.local");
@@ -43,6 +45,9 @@ async function main() {
   const existing = process.env.RAZORPAY_PLAN_ID?.trim();
   if (existing) {
     console.log(`RAZORPAY_PLAN_ID already set: ${existing}`);
+    console.log(
+      "If upgrading from ₹19, unset RAZORPAY_PLAN_ID and re-run this script to create a ₹999/month plan.",
+    );
     process.exit(0);
   }
 
@@ -65,12 +70,12 @@ async function main() {
   const match = (list.items ?? []).find(
     (plan) =>
       plan.item?.currency === "INR" &&
-      plan.item?.amount === 1900 &&
+      plan.item?.amount === PRO_AMOUNT_PAISE &&
       plan.period === "monthly",
   );
 
   if (match?.id) {
-    console.log(`Found existing INR ₹19/month plan: ${match.id}`);
+    console.log(`Found existing INR ₹999/month plan: ${match.id}`);
     console.log(`Add to .env.local:\nRAZORPAY_PLAN_ID=${match.id}`);
     process.exit(0);
   }
@@ -83,11 +88,11 @@ async function main() {
       interval: 1,
       item: {
         name: "Recalliq Pro",
-        amount: 1900,
+        amount: PRO_AMOUNT_PAISE,
         currency: "INR",
-        description: "Recalliq Pro — ₹19/month",
+        description: "Recalliq Pro — ₹999/month",
       },
-      notes: { app: "meetingmind", env: "test" },
+      notes: { app: "recalliq", env: "test" },
     }),
   });
 

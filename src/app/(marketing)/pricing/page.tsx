@@ -9,7 +9,7 @@ import { pageMetadata } from "@/lib/seo/site";
 
 export const metadata: Metadata = pageMetadata(
   "Pricing",
-  "Free plan with 3 meetings. Pro at $19/month for unlimited AI meeting memory.",
+  "Free plan with 3 meetings. Pro at ₹999/month for unlimited AI meeting memory.",
 );
 
 export default function PricingPage() {
