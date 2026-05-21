@@ -337,3 +337,20 @@
     background: transparent;
   }
 }
+
+/* Razorpay Standard Checkout — keep iframe above app overlays (QR must stay visible) */
+body.razorpay-checkout-active {
+  overflow: auto !important;
+}
+
+.razorpay-container,
+.razorpay-checkout-frame,
+iframe[src*="razorpay"] {
+  z-index: 2147483646 !important;
+  max-width: 100vw !important;
+}
+
+/* Light backdrop helps QR contrast when app uses dark mode */
+.dark .razorpay-checkout-frame {
+  color-scheme: light;
+}

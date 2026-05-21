@@ -12,25 +12,35 @@ declare global {
     subscription_id: string;
     name: string;
     description: string;
-    handler: (response: RazorpaySuccessResponse) => void;
+    handler: (response: RazorpaySuccessResponse) => void | Promise<void>;
     prefill?: {
       name?: string;
       email?: string;
     };
     theme?: {
       color?: string;
+      backdrop_color?: string;
     };
     modal?: {
       ondismiss?: () => void;
+      backdropclose?: boolean;
+      escape?: boolean;
+      confirm_close?: boolean;
+    };
+    retry?: {
+      enabled?: boolean;
+      max_count?: number;
     };
     config?: {
       display?: {
-        blocks?: {
-          banks?: {
+        blocks?: Record<
+          string,
+          {
             name?: string;
             instruments?: Array<{ method: string }>;
-          };
-        };
+          }
+        >;
+        sequence?: string[];
         preferences?: {
           show_default_blocks?: boolean;
         };
@@ -40,7 +50,10 @@ declare global {
 
   interface RazorpayInstance {
     open: () => void;
-    on: (event: "payment.failed", handler: (response: unknown) => void) => void;
+    on: (
+      event: "payment.failed" | string,
+      handler: (response: unknown) => void,
+    ) => void;
   }
 
   interface Window {

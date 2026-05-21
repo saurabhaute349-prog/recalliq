@@ -1,46 +1,29 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { startTransition, useCallback, useState } from "react";
+import { startTransition, useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { BRAND } from "@/lib/brand/config";
-import { BILLING_CHECKOUT_THEME_COLOR } from "@/lib/billing/constants";
 import { formatMeetingDate } from "@/lib/meetings/format";
+import {
+  CheckoutDismissedError,
+  logRazorpayCheckout,
+  runRazorpayCheckout,
+  type RazorpayCheckoutPayload,
+  type RazorpayCheckoutPhase,
+} from "@/lib/billing/razorpay-checkout-client";
 import { useMounted } from "@/hooks/use-mounted";
-
-type CheckoutPayload = {
-  keyId: string;
-  subscriptionId: string;
-  name: string;
-  description: string;
-  prefill?: { email?: string; name?: string };
-};
-
-function loadRazorpayScript(): Promise<void> {
-  if (typeof window === "undefined") {
-    return Promise.reject(new Error("Razorpay is only available in the browser."));
-  }
-
-  if (window.Razorpay) {
-    return Promise.resolve();
-  }
-
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Could not load Razorpay checkout."));
-    document.body.appendChild(script);
-  });
-}
 
 export function useBillingActions(isPro: boolean) {
   const router = useRouter();
   const mounted = useMounted();
-  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [checkoutPhase, setCheckoutPhase] =
+    useState<RazorpayCheckoutPhase>("idle");
+  const [upiFallbackReady, setUpiFallbackReady] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const checkoutPayloadRef = useRef<RazorpayCheckoutPayload | null>(null);
+  const upiFallbackOpenedRef = useRef(false);
 
   const refreshBilling = useCallback(() => {
     if (!mounted) return;
@@ -49,17 +32,53 @@ export function useBillingActions(isPro: boolean) {
     });
   }, [mounted, router]);
 
-  const startCheckout = useCallback(async () => {
-    if (isPro || isCheckingOut) return;
+  const openUpiIntentCheckout = useCallback(async () => {
+    const payload = checkoutPayloadRef.current;
+    if (!payload || upiFallbackOpenedRef.current) return;
 
-    setIsCheckingOut(true);
+    upiFallbackOpenedRef.current = true;
+    setUpiFallbackReady(false);
+    logRazorpayCheckout("qr_fallback_open_upi_intent");
+
+    try {
+      await runRazorpayCheckout({
+        payload,
+        mode: "upi_intent",
+        onPhaseChange: setCheckoutPhase,
+      });
+      toast.success(`Welcome to ${BRAND.proPlanName}!`, {
+        description: "Unlimited meetings and AI are now unlocked.",
+      });
+      refreshBilling();
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message !== "Payment failed"
+      ) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "UPI checkout could not be started.",
+        );
+      }
+    } finally {
+      upiFallbackOpenedRef.current = false;
+      checkoutPayloadRef.current = null;
+    }
+  }, [refreshBilling]);
+
+  const startCheckout = useCallback(async () => {
+    if (isPro || checkoutPhase !== "idle") return;
+
+    setUpiFallbackReady(false);
+    upiFallbackOpenedRef.current = false;
 
     try {
       const orderResponse = await fetch("/api/billing/create-order", {
         method: "POST",
       });
 
-      const orderData = (await orderResponse.json()) as CheckoutPayload & {
+      const orderData = (await orderResponse.json()) as RazorpayCheckoutPayload & {
         error?: string;
         hint?: string;
       };
@@ -69,74 +88,44 @@ export function useBillingActions(isPro: boolean) {
         throw new Error(detail || "Could not start checkout.");
       }
 
-      await loadRazorpayScript();
+      checkoutPayloadRef.current = orderData;
 
-      await new Promise<void>((resolve, reject) => {
-        const checkout = new window.Razorpay({
-          key: orderData.keyId,
-          subscription_id: orderData.subscriptionId,
-          name: orderData.name,
-          description: orderData.description,
-          prefill: orderData.prefill,
-          theme: { color: BILLING_CHECKOUT_THEME_COLOR },
-          config: {
-            display: {
-              preferences: { show_default_blocks: true },
-            },
-          },
-          handler: async (response) => {
-            try {
-              const verifyResponse = await fetch("/api/billing/verify", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(response),
-              });
-
-              const verifyData = (await verifyResponse.json()) as {
-                error?: string;
-              };
-
-              if (!verifyResponse.ok) {
-                throw new Error(
-                  verifyData.error ?? "Payment verification failed.",
-                );
-              }
-
-              toast.success(`Welcome to ${BRAND.proPlanName}!`, {
-                description: "Unlimited meetings and AI are now unlocked.",
-              });
-              refreshBilling();
-              resolve();
-            } catch (error) {
-              reject(error);
-            }
-          },
-          modal: {
-            ondismiss: () => {
-              setIsCheckingOut(false);
-              resolve();
-            },
-          },
-        });
-
-        checkout.on("payment.failed", () => {
-          toast.error("Payment could not be completed. Please try again.");
-          setIsCheckingOut(false);
-          reject(new Error("Payment failed"));
-        });
-
-        checkout.open();
+      await runRazorpayCheckout({
+        payload: orderData,
+        mode: "standard",
+        onPhaseChange: setCheckoutPhase,
+        onQrFallback: () => {
+          setUpiFallbackReady(true);
+          toast.info("QR slow to load?", {
+            description: "Opening UPI app payment as a backup.",
+            duration: 4000,
+          });
+          void openUpiIntentCheckout();
+        },
       });
+
+      toast.success(`Welcome to ${BRAND.proPlanName}!`, {
+        description: "Unlimited meetings and AI are now unlocked.",
+      });
+      refreshBilling();
     } catch (error) {
+      if (error instanceof CheckoutDismissedError) {
+        return;
+      }
+      logRazorpayCheckout("checkout.error", {
+        message: error instanceof Error ? error.message : String(error),
+      });
       toast.error(
         error instanceof Error
           ? error.message
           : "Checkout could not be started. Please try again.",
       );
     } finally {
-      setIsCheckingOut(false);
+      checkoutPayloadRef.current = null;
+      setUpiFallbackReady(false);
+      setCheckoutPhase("idle");
     }
-  }, [isCheckingOut, isPro, refreshBilling]);
+  }, [checkoutPhase, isPro, openUpiIntentCheckout, refreshBilling]);
 
   const cancelSubscription = useCallback(
     async (subscriptionId: string | null | undefined) => {
@@ -177,11 +166,17 @@ export function useBillingActions(isPro: boolean) {
     [isCancelling, refreshBilling],
   );
 
+  const isCheckingOut = checkoutPhase !== "idle";
+
   return {
     isCheckingOut,
+    checkoutPhase,
+    upiFallbackReady,
     isCancelling,
     startCheckout,
+    openUpiIntentCheckout,
     cancelSubscription,
     refreshBilling,
   };
 }
+
